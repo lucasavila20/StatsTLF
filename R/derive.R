@@ -37,12 +37,12 @@ derive <- function(.data, var, from = list(), cases = list(), by = USUBJID, defa
 
   ### Validate Inputs ----------------------------------------------------------
   stopifnot(
-    '`var` and `by` cannot be the same variable.' = by_str != var_str,
-    "Validation error: The dataset does not conform to the defined metadata." = StatsTLF::validate_adam_dataset(.data, print = FALSE),
+    '`var` and `by` cannot be the same variable.' = !any(by_str == var_str),
     "`var` must be a single name or symbol." = rlang::is_symbol(var) || (is.character(var) && length(var) == 1),
     "`var` must exist in .data." = var_str %in% colnames(.data),
     "`by` must exist in .data." = all(by_str %in% colnames(.data)),
-    "`from` must be a list." = is.list(from)
+    "`from` must be a list." = is.list(from),
+    "`.data` must be created via `create_adam_datasets()` function." = !is.null(attr(.data, 'name'))
   )
 
   if (length(from) > 0) {
@@ -70,162 +70,115 @@ derive <- function(.data, var, from = list(), cases = list(), by = USUBJID, defa
       )
   )
 
-  ### Setup Enviromnent --------------------------------------------------------
-  cat('Deriving', var_str, '...')
+  ### Setup Environment --------------------------------------------------------
+  cat('Deriving', var_str, '... ')
 
-  path <- attr(.data, 'path')
-  name <- attr(.data, 'name')
-  main <- name
+  main <- attr(.data, 'name')
 
   levels <- if (is.factor(.data[[var_str]])) levels(.data[[var_str]]) else NULL
 
   datasets_env <- from
   datasets_env[[main]] <- .data
 
-  .data[[var_str]][!is.na(.data[[var_str]])] <- NA
+  # Prepare result vector (keep column type/levels)
+  result_col <- .data[[var_str]]
+  result_col[!is.na(result_col)] <- NA
 
+  n <- nrow(.data)
+
+  # Precompute key for .data (single or composite)
+  if (length(by_str) == 1) {
+    data_keys <- as.character(.data[[by_str]])
+  } else {
+    data_keys <- do.call(paste0, .data[, by_str, drop = FALSE])
+  }
+
+  caller_env <- rlang::caller_env()
+
+  cum_keys <- c()
+
+  ### Loop cases ---------------------------------------------------------------
   for (case in cases) {
-    ### Run Condition ------------------------------------------------------------
+    ### Evaluate condition -----------------------------------------------------
     cond_expr <- rlang::get_expr(case$condition)
     val_expr  <- rlang::get_expr(case$value)
-    caller_env <- rlang::caller_env()
 
-    condition_result <- rlang::eval_tidy(cond_expr, data = datasets_env, env = caller_env)
-
-    if (!is.logical(condition_result)) stop("`condition` must evaluate to a logical vector.")
-    if (length(condition_result) == 1 && isTRUE(condition_result)) condition_result <- rep(TRUE, nrow(.data))
-
-    ### Match IDs ----------------------------------------------------------------
-    matched_ids <- NULL
-    for (nm in names(datasets_env)) {
-      dataset <- datasets_env[[nm]]
-      if (attr(dataset, 'name') == main) {
-        if (length(by_str) == 1) {
-          ids <- dataset[[by_str]][condition_result]
-        } else {
-          ids <- dataset[condition_result, by_str, drop = FALSE]
-        }
-        matched_ids <- union(matched_ids, ids)
-      }
+    condition_result <- if (rlang::is_call(cond_expr) || rlang::is_symbol(cond_expr)) {
+      rlang::eval_tidy(cond_expr, data = datasets_env, env = caller_env)
+    } else {
+      rep(cond_expr, n)
     }
 
-    if (is.null(matched_ids)) matched_ids <- character(0)
+    cond_expr_text <- rlang::expr_text(cond_expr)
+    match_ds <- unique(stringr::str_extract_all(cond_expr_text, "\\b\\w+(?=\\$)")[[1]])
 
-    ### Run Value ----------------------------------------------------------------
+    stopifnot("`condition` must depend only on the main dataset." = length(match_ds) == 0 | all(match_ds == main))
+
+    if (!is.logical(condition_result)) stop("`condition` must evaluate to a logical vector.")
+    stopifnot("`condition` length does not match the main dataset." = length(condition_result) == n)
+
+    if (!any(condition_result, na.rm = TRUE)) next
+    matched_keys <- unique(data_keys[condition_result])
+
+    ### Evaluate value ---------------------------------------------------------
     value_result <- if (rlang::is_call(val_expr) || rlang::is_symbol(val_expr)) {
       rlang::eval_tidy(val_expr, data = datasets_env, env = caller_env)
     } else {
-      val_expr
+      rep(val_expr, n)
     }
 
-    value_length <- length(value_result)
-    source_dataset <- purrr::keep(datasets_env, ~ nrow(.x) == value_length)
+    assign_indices <- which(data_keys %in% matched_keys)
+    assign_indices <- assign_indices[!assign_indices %in% cum_keys]
 
-    if (length(source_dataset) == 1 && !is.null(matched_ids)) {
-      src <- source_dataset[[1]]
-      val_tmp <- paste0(".val_", var_str)
-      src[[val_tmp]] <- value_result
+    val_expr_text <- rlang::expr_text(val_expr)
+    match_ds <- unique(stringr::str_extract_all(val_expr_text, "\\b\\w+(?=\\$)")[[1]])
 
-      if (length(by_str) == 1) {
-        reduced_values <- src |>
-          dplyr::filter(.data[[by_str]] %in% matched_ids) |>
-          dplyr::group_by(across(all_of(by_str))) |>
-          dplyr::summarise(!!var := dplyr::first(.data[[val_tmp]]), .groups = "drop")
-      } else {
-        reduced_values <- src |>
-          dplyr::filter(
-            purrr::reduce(
-              purrr::map2(by_str, matched_ids, ~ src[[.x]] %in% .y),
-              `&`
-            )
-          ) |>
-          dplyr::group_by(across(all_of(by_str))) |>
-          dplyr::summarise(!!var := dplyr::first(.data[[val_tmp]]), .groups = "drop")
-
-        matched_ids <- do.call(paste0, matched_ids)
-        data_ids <- do.call(paste0, .data[, by_str, drop = FALSE])
-      }
-
-      value_final <- .data |>
-        dplyr::select(by_str) |>
-        dplyr::left_join(reduced_values, by = by_str) |>
-        dplyr::pull(!!var)
-
-      if (length(by_str) == 1) {
-        .data <- .data |>
-          dplyr::mutate(
-            !!var := dplyr::if_else(
-              is.na(.data[[rlang::as_string(var)]]) & .data[[by_str]] %in% matched_ids,
-              value_final,
-              !!var
-            )
-          )
-      } else {
-        .data <- .data |>
-          dplyr::mutate(
-            !!var := dplyr::if_else(
-              is.na(.data[[rlang::as_string(var)]]) & data_ids %in% matched_ids,
-              value_final,
-              !!var
-            )
-          )
-      }
+    if (length(match_ds) == 0) {
+      result_col[assign_indices] <- value_result[assign_indices]
+      cum_keys <- c(cum_keys, unique(assign_indices))
+    } else if (length(match_ds) > 1) {
+      stop('`Value` must come from only one dataset.')
     } else {
-      if (!all(is.na(.data[[var_str]]))) {
-        existing_type <- typeof(stats::na.omit(.data[[var_str]])[1])
-        value_type <- typeof(stats::na.omit(value_result)[1])
-        is_compatible <- function(existing, incoming) {
-          (existing == incoming) ||
-            (existing == 'factor' & incoming == 'character') ||
-            (existing == 'character' & incoming == 'factor') ||
-            (existing == 'double' & incoming == 'integer') ||
-            (existing == 'integer' & incoming == 'double')
-        }
-        stopifnot("`value` type mismatch in case for variable `var`." = is_compatible(existing_type, value_type))
-      }
+      src_df <- datasets_env[[match_ds]]
 
-      if (!is.null(levels)) {
-        values_to_check <- unique(na.omit(value_result))
-        invalid_values <- setdiff(values_to_check, levels)
-        stopifnot("Validation error: Invalid value(s) assigned to factor `var` — not in defined levels: " = length(invalid_values) == 0)
-      }
-
-      if (length(by_str) == 1) {
-        .data <- .data |>
-          dplyr::mutate(
-            !!var := dplyr::if_else(
-              is.na(.data[[rlang::as_string(var)]]) & .data[[by_str]] %in% matched_ids,
-              value_result,
-              !!var
-            )
-          )
+      src_keys <- if (length(by_str) == 1) {
+        as.character(src_df[[by_str]])
       } else {
-        matched_ids <- do.call(paste0, matched_ids)
-        data_ids <- do.call(paste0, .data[, by_str, drop = FALSE])
-
-        .data <- .data |>
-          dplyr::mutate(
-            !!var := dplyr::if_else(
-              is.na(.data[[rlang::as_string(var)]]) & data_ids %in% matched_ids,
-              value_result,
-              !!var
-            )
-          )
+        do.call(paste0, src_df[, by_str, drop = FALSE])
       }
+
+      matched_pos <- match(data_keys[assign_indices], src_keys)
+
+      aligned_values <- value_result[matched_pos]
+
+      result_col[assign_indices] <- aligned_values
+      cum_keys <- c(cum_keys, unique(assign_indices))
     }
   }
 
   ### Add Default Value --------------------------------------------------------
   if (!identical(default, NA)) {
-    default_val <- rlang::eval_tidy(rlang::get_expr(default), data = datasets_env, env = caller_env)
+    default_expr <- rlang::get_expr(default)
 
-    if (!all(is.na(.data[[var_str]]))) {
-      existing_type <- typeof(stats::na.omit(.data[[var_str]])[1])
-      default_type <- typeof(stats::na.omit(default_val)[1])
+    dataset_name_attr <- attr(default, "dataset_name")
+    variable_name_attr <- attr(default, "variable_name")
+
+    default_result <- if (rlang::is_call(default_expr) || rlang::is_symbol(default_expr)) {
+      rlang::eval_tidy(default_expr, data = datasets_env, env = caller_env)
+    } else {
+      rep(default_expr, n)
+    }
+
+    seq_n <- seq_len(n)
+    default_indices <- which(!seq_n %in% cum_keys)
+
+    if (!all(is.na(result_col))) {
+      existing_type <- class(stats::na.omit(result_col)[1])
+      default_type <- class(stats::na.omit(default_result)[1])
       is_compatible <- function(existing, incoming) {
         (existing == incoming) ||
-          (existing == 'factor' & incoming == 'character') ||
           (existing == 'character' & incoming == 'factor') ||
+          (existing == 'factor' & incoming == 'character') ||
           (existing == 'double' & incoming == 'integer') ||
           (existing == 'integer' & incoming == 'double')
       }
@@ -233,32 +186,34 @@ derive <- function(.data, var, from = list(), cases = list(), by = USUBJID, defa
     }
 
     if (!is.null(levels)) {
-      default_values <- unique(na.omit(default_val))
+      default_values <- unique(na.omit(default_result[default_indices]))
       invalid_defaults <- setdiff(default_values, levels)
       stopifnot("Validation error: Default value(s) assigned to factor `var` — not in defined levels: " = length(invalid_defaults) == 0)
     }
 
-    .data <- .data |>
-      dplyr::mutate(
-        !!var := dplyr::if_else(
-          is.na(.data[[var_str]]),
-          default_val,
-          !!var
-        )
-      )
+    if (is.null(dataset_name_attr) || is.null(variable_name_attr)) {
+      result_col[default_indices] <- default_result[default_indices]
+
+    } else {
+      src_df <- datasets_env[[dataset_name_attr]]
+
+      src_keys <- if (length(by_str) == 1) {
+        as.character(src_df[[by_str]])
+      } else {
+        do.call(paste0, src_df[, by_str, drop = FALSE])
+      }
+
+      matched_pos <- match(data_keys[default_indices], src_keys)
+      aligned_values <- src_df[[variable_name_attr]][matched_pos]
+
+      result_col[default_indices] <- aligned_values
+    }
   }
 
-  ### Set Attributes -----------------------------------------------------------
-  if (!is.null(levels)) {
-    .data <- .data |>
-      dplyr::mutate(
-        !!var := factor(.data[[rlang::as_string(var)]], levels = levels)
-      )
-  }
+  ### Set results & finalize ---------------------------------------------------
+  .data[[var_str]] <- result_col
 
-  .data <- set_adam_attr(.data, path, name)
-
-  stopifnot(StatsTLF::validate_adam_dataset(.data))
+  cat('Ok\n')
 
   return(.data)
 }

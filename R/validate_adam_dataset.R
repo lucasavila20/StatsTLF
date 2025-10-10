@@ -15,63 +15,68 @@
 #' x <- validate_adam_dataset(dataset)
 #' }
 validate_adam_dataset <- function(dataset, print = TRUE) {
-
-  # 0. Check if path metadata is missing
-  if (is.null(attr(dataset, "path"))) {
-    stop('`Path` is missing. Please, use `set_adam_attr()` to fix this.')
+  # --- 0. Check metadata path -------------------------------------------------
+  path <- attr(dataset, "path")
+  if (is.null(path)) {
+    stop("`Path` is missing. Please, use `set_adam_attr()` to fix this.")
   }
 
-  path <- attr(dataset, 'path')
-
-  template <- create_adam_dataset(path)
-
+  template <- create_adam_datasets(path)
   target_name <- attr(dataset, "name")
-  match_idx <- which(purrr::map_chr(template, ~ attr(.x, "name")) == target_name)
-  stopifnot('Dataset name not found in metadata.' = length(match_idx) == 1)
+
+  template_names <- vapply(template, function(x) attr(x, "name"), character(1))
+  match_idx <- match(target_name, template_names)
+
+  stopifnot("Dataset name not found in metadata." = !is.na(match_idx))
   template <- template[[match_idx]]
 
   issues <- list()
   issues_attr <- list()
 
-  # 1. Check if columns order are as specified
-  cols_dataset <- names(dataset)
+  # --- 1. Check column structure ----------------------------------------------
+  cols_dataset  <- names(dataset)
   cols_template <- names(template)
 
   missing_cols <- setdiff(cols_template, cols_dataset)
   extra_cols   <- setdiff(cols_dataset, cols_template)
 
-  if (length(missing_cols) > 0) {
-    issues[["Missing columns"]] <- missing_cols
-  }
-  if (length(extra_cols) > 0) {
-    issues[["Extra columns"]] <- extra_cols
-  }
+  if (length(missing_cols)) issues[["Missing columns"]] <- missing_cols
+  if (length(extra_cols))   issues[["Extra columns"]]   <- extra_cols
 
-  if (length(missing_cols) == 0 & length(extra_cols) == 0 & !identical(cols_dataset, cols_template)) {
+  if (!length(missing_cols) && !length(extra_cols) &&
+      !identical(cols_dataset, cols_template)) {
     issues[["Column order mismatch"]] <- list(
       dataset_order = cols_dataset,
       template_order = cols_template
     )
   }
 
-  # 2. Compare each comum column
+  # --- 2. Compare common columns ----------------------------------------------
   common_cols <- intersect(cols_template, cols_dataset)
 
+  attrs_template_all <- lapply(template[common_cols], attributes)
+  attrs_dataset_all  <- lapply(dataset[common_cols], attributes)
+
   for (col in common_cols) {
-    col_dataset <- dataset[[col]]
+    col_dataset  <- dataset[[col]]
     col_template <- template[[col]]
 
-    # Compare classes
-    if (!identical(class(col_dataset), class(col_template))) {
+    attr_template <- attrs_template_all[[col]]
+    attr_dataset  <- attrs_dataset_all[[col]]
+
+    # --- Check classes --------------------------------------------------------
+    class_dataset  <- class(col_dataset)
+    class_template <- class(col_template)
+    if (!identical(class_dataset, class_template)) {
       issues[[paste0("Class mismatch: ", col)]] <- list(
-        expected = class(col_template),
-        found = class(col_dataset)
+        expected = class_template,
+        found = class_dataset
       )
     }
 
-    # If factor, compare levels
-    if ("factor" %in% class(col_template)) {
-      levels_dataset <- levels(col_dataset)
+    # --- Check levels (if fator) ----------------------------------------------
+    if ("factor" %in% class_template) {
+      levels_dataset  <- levels(col_dataset)
       levels_template <- levels(col_template)
       if (!identical(levels_dataset, levels_template)) {
         issues[[paste0("Levels mismatch: ", col)]] <- list(
@@ -81,29 +86,49 @@ validate_adam_dataset <- function(dataset, print = TRUE) {
       }
     }
 
-    # # Check additional attributes
-    attrs_template <- attributes(col_template)
-    attrs_dataset <- attributes(col_dataset)
-
-    for (attr_name in names(attrs_template)) {
-      if (attr_name %in% c("levels", "class")) next
-
-      val_template <- attrs_template[[attr_name]]
-      val_dataset <- attrs_dataset[[attr_name]]
-
-      if (!identical(val_template, val_dataset)) {
-        issues_attr[[col]] <- c(issues_attr[[col]], attr_name)
+    # --- Check max length -----------------------------------------------------
+    if (!(attr_template$data_type %in% c("datetime", "date")) &&
+        !all(is.na(col_dataset)) && !is.na(attr_template$length) &&
+        is.character(col_dataset)) {
+      max_len <- max(nchar(col_dataset), na.rm = TRUE)
+      len_limit <- as.numeric(attr_template$length)
+      if (max_len > len_limit) {
+        issues[[paste0("Length above prespecified limit: ", col)]] <- list(
+          expected = len_limit,
+          found = max_len
+        )
       }
+    }
+
+    # --- Check has no data ----------------------------------------------------
+    if (identical(attr_template$has_no_data, "Yes") && any(!is.na(col_dataset))) {
+      non_na <- col_dataset[!is.na(col_dataset)]
+      preview <- head(non_na, 3)
+      msg <- if (length(non_na) > 3)
+        list(expected = NA, found = c(noquote("For example:"), paste(format(preview), collapse = ", ")))
+      else
+        list(expected = NA, found = preview)
+
+      issues[[paste0("Data in column that should be empty: ", col)]] <- msg
+    }
+
+    # --- Additional attributes ------------------------------------------------
+    attr_names <- setdiff(names(attr_template), c("levels", "class"))
+    mismatched <- vapply(attr_names, function(a) {
+      !identical(attr_template[[a]], attr_dataset[[a]])
+    }, logical(1))
+
+    if (any(mismatched)) {
+      issues_attr[[col]] <- attr_names[mismatched]
     }
   }
 
-  if (length(issues) == 0 & length(issues_attr) == 0) {
-    if (print == TRUE) {
-      message("✅ No structural mismatches found between dataset and metadata")
-    }
-    error_trig <- TRUE
+  # --- Final result -----------------------------------------------------------
+  if (!length(issues) && !length(issues_attr)) {
+    if (print) message("✅ No structural mismatches found between dataset and metadata")
+    result <- TRUE
   } else {
-    if (print == TRUE) {
+    if (print) {
       message("⚠️ Structural mismatches found:\n")
       for (issue in names(issues)) {
         cat("•", issue, ":\n")
@@ -111,12 +136,11 @@ validate_adam_dataset <- function(dataset, print = TRUE) {
         cat("\n")
       }
       for (issue_attr in names(issues_attr)) {
-        cat("• Attributes mismatch:", issue_attr, ":", paste(issues_attr[[issue_attr]], collapse = ", "), "\n")
-        cat("\n")
+        cat("• Attributes mismatch:", issue_attr, ":", paste(issues_attr[[issue_attr]], collapse = ", "), "\n\n")
       }
     }
-    error_trig <- FALSE
+    result <- FALSE
   }
 
-  return(invisible(error_trig))
+  invisible(result)
 }

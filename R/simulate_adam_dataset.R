@@ -37,6 +37,9 @@ simulate_adam_dataset <- function(dataset, n = 10) {
     levels <- attr(col, 'levels')
     has_no_data <- attr(col, 'has_no_data')
 
+    length_attr <- as.integer(attr(col, 'length'))
+    significant_digits_attr <- as.integer(attr(col, 'significant_digits'))
+
     is_simulated <- origin == 'Collected' & has_no_data == 'No'
 
     convert_levels_to_type <- function(levels_vec, data_type) {
@@ -78,9 +81,15 @@ simulate_adam_dataset <- function(dataset, n = 10) {
         factor(sample(converted_levels, n, replace = TRUE), levels = converted_levels)
       } else {
         switch(data_type,
-               "text" = toupper(replicate(n, paste0(sample(letters, 10, replace = TRUE), collapse = ""))),
-               "integer" = sample(1L:100L, n, replace = TRUE),
-               "float" = rnorm(n, mean = 50, sd = 10),
+               "text" = toupper(replicate(n, paste0(sample(letters, length_attr, replace = TRUE), collapse = ""))),
+               "integer" = {
+                 max_val <- min(10^length_attr - 1, .Machine$integer.max)
+                 sample.int(max_val, n, replace = TRUE)
+               },
+               "float" = {
+                 max_value <- 10^(length_attr - significant_digits_attr - 1) - 1
+                 round(runif(n, min = 0, max = max_value), digits = significant_digits_attr)
+               },
                "datetime" = as.POSIXct("2000-01-01") + sample(0:(3600 * 24 * 1000), n, replace = TRUE),
                "date" = as.Date("2000-01-01") + sample(0:10000, n, replace = TRUE),
                "time" = hms::as_hms(sprintf("%02d:%02d:%02d", sample(0:23, n, TRUE), sample(0:59, n, TRUE), sample(0:59, n, TRUE))),

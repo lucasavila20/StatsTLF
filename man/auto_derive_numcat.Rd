@@ -4,12 +4,14 @@
 \alias{auto_derive_numcat}
 \title{Automatically Derive Numeric Categories}
 \usage{
-auto_derive_numcat(dataset, numcat_method)
+auto_derive_numcat(dataset, numcat_method, by)
 }
 \arguments{
 \item{dataset}{A data frame or tibble. Columns must have `method_id`, `origin`, and `label` attributes.}
 
 \item{numcat_method}{A string specifying the `method_id` to filter variables for derivation.}
+
+\item{by}{Symbol. The subject identifier variable name common to `.data` and all datasets in `from`. Used to match rows across datasets (default is `"USUBJID"`).}
 }
 \value{
 The modified dataset with derived numeric categories applied where applicable.
@@ -22,6 +24,6 @@ Filters variables with `method_id == numcat_method` and `origin == "Derived"`. I
 }
 \examples{
 # Example usage
-auto_derive(dataset, "example_method")
+auto_derive(dataset, "example_method", by = rlang::exprs(USUBJID))
 
 }

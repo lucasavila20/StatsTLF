@@ -1,4 +1,4 @@
-#' Create Analysis Dataset
+#' Create Analysis Datasets
 #'
 #' This function generates an analysis dataset structure with zero rows based on the provided metadata file in .xlsx format. The metadata should follow the package template, including sheets for datasets, variables, and codelists.
 #'
@@ -10,10 +10,10 @@
 #' @examples
 #' \dontrun{
 #' # Example usage:
-#' # Create an analysis dataset structure from 'Spec.xlsx'
-#' x <- create_adam_dataset('Spec.xlsx')
+#' # Create an analysis datasets structure from 'Spec.xlsx'
+#' x <- create_adam_datasets('Spec.xlsx')
 #' }
-create_adam_dataset <- function(path) {
+create_adam_datasets <- function(path) {
 
   # Validation Step -------------------------------------------------------------
   stopifnot(

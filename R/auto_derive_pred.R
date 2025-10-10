@@ -60,15 +60,16 @@ auto_derive_pred <- function(dataset, from, by = rlang::exprs(USUBJID)) {
       return(data)
     }
 
+    default_expr <- StatsTLF::derive_expr(from[[dataset_name]][[variable_name]])
+    attr(default_expr, "dataset_name") <- dataset_name
+    attr(default_expr, "variable_name") <- variable_name
+
     data |>
-      StatsTLF::derive(var = !!col, from = from, by = by,
-        cases = list(
-          list(
-            condition = StatsTLF::derive_expr(TRUE),
-            value = StatsTLF::derive_expr(from[[dataset_name]][[variable_name]])
-          )
-        ),
-        default = NA
+      StatsTLF::derive(
+        var = !!col,
+        from = from,
+        by = by,
+        default = default_expr
       )
   }, .init = dataset)
 

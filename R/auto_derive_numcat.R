@@ -4,6 +4,7 @@
 #'
 #' @param dataset A data frame or tibble. Columns must have `method_id`, `origin`, and `label` attributes.
 #' @param numcat_method A string specifying the `method_id` to filter variables for derivation.
+#' @param by Symbol. The subject identifier variable name common to `.data` and all datasets in `from`. Used to match rows across datasets (default is `"USUBJID"`).
 #'
 #' @return The modified dataset with derived numeric categories applied where applicable.
 #'
@@ -12,10 +13,10 @@
 #'
 #' @examples
 #' # Example usage
-#' auto_derive(dataset, "example_method")
+#' auto_derive(dataset, "example_method", by = rlang::exprs(USUBJID))
 #'
 #' @export
-auto_derive_numcat <- function(dataset, numcat_method) {
+auto_derive_numcat <- function(dataset, numcat_method, by) {
   cols <- colnames(dataset)
   filtered_indices <- which(
     purrr::map_lgl(cols, ~ attr(dataset[[.x]], "method_id") == numcat_method & attr(dataset[[.x]], "origin") == "Derived")
@@ -34,7 +35,7 @@ auto_derive_numcat <- function(dataset, numcat_method) {
         StatsTLF::derive2(
           var_target = !!cols[j],
           var_source = !!cols[source_index],
-          by = rlang::exprs(USUBJID)
+          by = by
         )
     } else {
       not_derived <- c(not_derived, cols[j])
