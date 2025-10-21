@@ -3,7 +3,6 @@
 #' This function creates content using a specified content backbone and dataset. Additional parameters allow customization of subtitles, population, section, and dimensions for figures.
 #'
 #' @param content_backbone An object of class `ContentBackbone`.
-#' @param dataset A tibble dataset to which the content backbone will be applied.
 #' @param subtitle A character string specifying the content subtitle (optional).
 #' @param population A character string specifying the content population (optional).
 #' @param section A character string specifying the content section (optional).
@@ -30,12 +29,10 @@
 #'  dataset = tibble::tibble(x = c(1, 2, 3))
 #' )
 #' }
-create_content <- function(content_backbone, dataset, subtitle = NA_character_, population = NA_character_, section = NA_character_, fdim = list(width = 9, height = 5, dpi = 600), export_name = NA_character_, ...) {
+create_content <- function(content_backbone, subtitle = NA_character_, population = NA_character_, section = NA_character_, fdim = list(width = 9, height = 5, dpi = 600), export_name = NA_character_, ...) {
 
  # Validation Step -------------------------------------------------------------
  stopifnot("`content_backbone`must be a ContentBackbone object." = class(content_backbone) == 'ContentBackbone')
-
- stopifnot("`dataset` must be a tibble." = tibble::is_tibble(dataset))
 
  stopifnot(
   "`subtitle` must be a character." = is.character(subtitle),
@@ -52,7 +49,7 @@ create_content <- function(content_backbone, dataset, subtitle = NA_character_, 
   "`section` cannot be an array." = length(section) == 1
  )
 
- value <- tryCatch(content_backbone@fun(dataset, ...), error = function(e) stop(paste('Error applying the dataset to the content backbone. Please check `fun` code.\n', e)))
+ value <- tryCatch(content_backbone@fun(...), error = function(e) stop(paste('Error applying the dataset to the content backbone. Please check `fun` code.\n', e)))
 
  stopifnot("Return of `fun` must be a flextable, tibble or ggplot object." = any(class(value) %in% c('flextable', 'gg', 'tbl_df', 'gtable')))
 
@@ -77,5 +74,9 @@ create_content <- function(content_backbone, dataset, subtitle = NA_character_, 
  )
  # -----------------------------------------------------------------------------
 
- return(create_content_method(x = content_backbone, value = value, subtitle = subtitle, population = population, section = section, fdim = fdim, export_name = export_name, ...))
+ bk_name <- deparse(substitute(content_backbone))
+ bk_name <- strsplit(bk_name, "\\$")[[1]]
+ bk_name <- bk_name[length(bk_name)]
+
+ return(create_content_method(x = content_backbone, value = value, subtitle = subtitle, population = population, section = section, fdim = fdim, export_name = export_name, bk_name = bk_name, ...))
 }

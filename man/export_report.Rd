@@ -8,7 +8,8 @@ export_report(
   package,
   template_name = "template_PT-BR.docx",
   supp = FALSE,
-  add_toc = TRUE
+  add_toc = TRUE,
+  spec = ""
 )
 }
 \arguments{
@@ -19,6 +20,8 @@ export_report(
 \item{supp}{A boolean indicating whether 'S' should be added before the content number in the export. Defaults to FALSE.}
 
 \item{add_toc}{A boolean indicating whether a table of contents should be added to the report. Defaults to TRUE.}
+
+\item{spec}{A character string with path to the spec file.}
 }
 \value{
 The path to the exported package.

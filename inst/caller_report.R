@@ -12,7 +12,8 @@ StatsTLF::export_report(
  package = package,
  template_name = "template_EN-US.docx",
  supp = FALSE,
- add_toc = FALSE
+ add_toc = FALSE,
+ spec = ""
 )
 
 rm(list = ls())

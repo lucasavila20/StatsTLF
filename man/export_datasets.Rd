@@ -4,10 +4,12 @@
 \alias{export_datasets}
 \title{Export Dataset Package}
 \usage{
-export_datasets(package)
+export_datasets(package, spec)
 }
 \arguments{
 \item{package}{An object of class `ContentPackage`.}
+
+\item{spec}{A character string with path to the spec file.}
 }
 \value{
 The path to the exported package.

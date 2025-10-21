@@ -192,11 +192,28 @@ derive <- function(.data, var, from = list(), cases = list(), by = USUBJID, defa
     }
 
     if (is.null(dataset_name_attr) || is.null(variable_name_attr)) {
-      result_col[default_indices] <- default_result[default_indices]
+      default_expr_text <- rlang::expr_text(default_expr)
+      match_ds <- unique(stringr::str_extract_all(default_expr_text, "\\b\\w+(?=\\$)")[[1]])
 
+      if (length(match_ds) == 0) {
+        result_col[default_indices] <- default_result[default_indices]
+      } else if (length(match_ds) > 1) {
+        stop('`Value` must come from only one dataset.')
+      } else {
+        src_df <- datasets_env[[match_ds]]
+        src_keys <- if (length(by_str) == 1) {
+          as.character(src_df[[by_str]])
+        } else {
+          do.call(paste0, src_df[, by_str, drop = FALSE])
+        }
+
+        matched_pos <- match(data_keys[default_indices], src_keys)
+        aligned_values <- default_result[matched_pos]
+
+        result_col[default_indices] <- aligned_values
+      }
     } else {
       src_df <- datasets_env[[dataset_name_attr]]
-
       src_keys <- if (length(by_str) == 1) {
         as.character(src_df[[by_str]])
       } else {

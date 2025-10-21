@@ -9,8 +9,8 @@ setClass(
 )
 
 # 'ContentBackbone' methods -----------------------------------------------------
-setGeneric('create_content_method', function(x, value, subtitle, population, section, fdim, export_name, ...) standardGeneric('create_content_method'))
-setMethod('create_content_method', 'ContentBackbone', function(x, value, subtitle, population, section, fdim, export_name, ...) {
+setGeneric('create_content_method', function(x, value, subtitle, population, section, fdim, export_name, bk_name, ...) standardGeneric('create_content_method'))
+setMethod('create_content_method', 'ContentBackbone', function(x, value, subtitle, population, section, fdim, export_name, bk_name, ...) {
 
  cat('  \u2500 Creating content:\n')
  cat('    \u2500 Type:', ifelse(is.na(x@type), "", x@type), '\n')
@@ -28,7 +28,9 @@ setMethod('create_content_method', 'ContentBackbone', function(x, value, subtitl
   type = x@type,
   content = value,
   fdim = fdim,
-  export_name = export_name
+  export_name = export_name,
+  fun = x@fun,
+  bk_name = bk_name
  )
 
  cat('  Done!\n')
@@ -72,7 +74,9 @@ setClass(
   type = 'character',
   content = 'flextableORggORtbl_dfORgtableORpatchwork',
   fdim = 'list',
-  export_name = 'character'
+  export_name = 'character',
+  fun = 'function',
+  bk_name = 'character'
  )
 )
 
@@ -285,8 +289,8 @@ setMethod('add_to_package_method', 'ContentPackage', function(x, content) {
  return(x)
 })
 
-setGeneric('export_report_method', function(x, template_name, supp = FALSE, add_toc = TRUE) standardGeneric('export_report_method'))
-setMethod('export_report_method', 'ContentPackage', function(x, template_name, supp = FALSE, add_toc = TRUE) {
+setGeneric('export_report_method', function(x, template_name, supp = FALSE, add_toc = TRUE, spec = "") standardGeneric('export_report_method'))
+setMethod('export_report_method', 'ContentPackage', function(x, template_name, supp = FALSE, add_toc = TRUE, spec = "") {
   convert_r_to_txt <- function(input_folder, output_folder) {
     r_files <- list.files(path = input_folder, pattern = "\\.R$", full.names = TRUE)
     for (r_file in r_files) {
@@ -344,6 +348,8 @@ setMethod('export_report_method', 'ContentPackage', function(x, template_name, s
 
  template_path <- paste0(here::here('00_Template'), '\\', template_name)
 
+ mapping_list <- list()
+
  doc <- officer::read_docx(path = template_path)
 
  if (add_toc) {
@@ -360,9 +366,58 @@ setMethod('export_report_method', 'ContentPackage', function(x, template_name, s
    } else {
      doc <- prepare_to_export_method(x@content_list[[i]], content_numbers$number[i], doc, x@sep_subtitle, x@sep_population, output$dir, last = content_numbers$last[i], language = x@language, supp = supp)
    }
+
+   caux <- x@content_list[[i]]
+
+   if (x@language == 'PT-BR') {
+     table_text <- 'Tabela '
+     figure_text <- 'Figura '
+     listing_text <- 'Lista '
+   } else if (x@language == 'EN-US') {
+     table_text <- 'Table '
+     figure_text <- 'Figure '
+     listing_text <- 'Listing '
+   }
+
+   if (caux@type == 'T') {
+     if (supp == TRUE) {
+       title_text <- paste0(table_text, 'S', content_numbers$number[i])
+     } else {
+       title_text <- paste0(table_text, content_numbers$number[i])
+     }
+   } else if (caux@type == 'F') {
+     if (supp == TRUE) {
+       title_text <- paste0(figure_text, 'S', content_numbers$number[i])
+     } else {
+       title_text <- paste0(figure_text, content_numbers$number[i])
+     }
+   } else if (caux@type == 'L') {
+     if (supp == TRUE) {
+       title_text <- paste0(listing_text, 'S', content_numbers$number[i])
+     } else {
+       title_text <- paste0(listing_text, content_numbers$number[i])
+     }
+   }
+
+   if (spec != '') {
+     mapping_list[[i]] <- tibble::tibble(
+       Display = title_text,
+       ID = title_text,
+       Documentation = 'Caller Contents File',
+       Title = combine_title(caux@title, caux@subtitle, caux@population, x@sep_subtitle, x@sep_population)
+     ) |>
+       dplyr::bind_cols(mapping_backbone(caux@fun, spec = spec)) |>
+       dplyr::mutate(`Programming Document` = paste0(caux@bk_name, '.R'))
+   }
+
    cat('  Done!\n')
  }
  print(doc, target = paste0(output$dir, '/tlf/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '.docx'))
+
+ if (spec != '') {
+   mapping_tb <- purrr::reduce(mapping_list, dplyr::bind_rows, .init = tibble::tibble(Display = character(), ID = character(), Documentation = character(), Title = character(), Variables = character(), `Programming Context` = character(), `Programming Code` = character()))
+   writexl::write_xlsx(mapping_tb, paste0(output$dir, '/documents/Mapping Report.xlsx'))
+ }
 
  files_to_copy <- list.files(output$dir, full.names = TRUE)
  file.copy(from = files_to_copy, to = paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d")), overwrite = TRUE, recursive = TRUE, copy.mode = TRUE)
@@ -378,8 +433,8 @@ setMethod('export_report_method', 'ContentPackage', function(x, template_name, s
  return(invisible(paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"))))
 })
 
-setGeneric('export_datasets_method', function(x) standardGeneric('export_datasets_method'))
-setMethod('export_datasets_method', 'ContentPackage', function(x) {
+setGeneric('export_datasets_method', function(x, spec = "") standardGeneric('export_datasets_method'))
+setMethod('export_datasets_method', 'ContentPackage', function(x, spec = "") {
   convert_r_to_txt <- function(input_folder, output_folder) {
     r_files <- list.files(path = input_folder, pattern = "\\.R$", full.names = TRUE)
     for (r_file in r_files) {
@@ -390,6 +445,19 @@ setMethod('export_datasets_method', 'ContentPackage', function(x) {
 
       writeLines(content, txt_file)
     }
+  }
+
+  combine_title <- function(title, subtitle, population, sep_subtitle, sep_population) {
+    fix_sep <- function(sep) ifelse(sep == "newline", " ", sep)
+
+    sep_subtitle <- fix_sep(sep_subtitle)
+    sep_population <- fix_sep(sep_population)
+
+    paste0(
+      title,
+      ifelse(!is.na(subtitle), paste0(sep_subtitle, subtitle), ""),
+      ifelse(!is.na(population), paste0(sep_population, population), "")
+    )
   }
 
   report_name <- paste0('Datasets - ', x@name)
@@ -404,18 +472,40 @@ setMethod('export_datasets_method', 'ContentPackage', function(x) {
   dir.create(paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/', 'datasets'))
   dir.create(paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/', 'datasets', '/', 'programs'))
 
-  sapply(seq(1, length(x@content_list)), function(i) {
+  dir.create(paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/', 'documents'))
+
+  mapping_list <- list()
+
+  for (i in seq(1, length(x@content_list))) {
     cat('    \u2500 Dataset', i, '...')
     caux <- x@content_list[[i]]
     if (is.na(caux@export_name)) {
-      saveRDS(caux@content, paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/adyy', i, ".RDS"))
-      haven::write_xpt(caux@content, path = paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/adyy', i, ".xpt"), version = 5)
+      cname <- paste0('adyy', i)
     } else {
-      saveRDS(caux@content, paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/', caux@export_name, ".RDS"))
-      haven::write_xpt(caux@content, path = paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/', caux@export_name, ".xpt"), version = 5)
+      cname <- caux@export_name
     }
+    saveRDS(caux@content, paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/', cname, '.RDS'))
+    write.csv(caux@content, paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/', cname, '.csv'))
+    haven::write_xpt(caux@content, path = paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/', cname, ".xpt"), version = 5)
+
+    if (spec != '') {
+      mapping_list[[i]] <- tibble::tibble(
+        Display = cname,
+        ID = cname,
+        Documentation = 'Caller Contents File',
+        Title = combine_title(caux@title, caux@subtitle, caux@population, x@sep_subtitle, x@sep_population)
+      ) |>
+      dplyr::bind_cols(mapping_backbone(caux@fun, spec = spec)) |>
+      dplyr::mutate(`Programming Document` = paste0(caux@bk_name, '.R'))
+    }
+
     cat('  Done!\n')
-  })
+  }
+
+  if (spec != '') {
+    mapping_tb <- purrr::reduce(mapping_list, dplyr::bind_rows, .init = tibble::tibble(Display = character(), ID = character(), Documentation = character(), Title = character(), Variables = character(), `Programming Context` = character(), `Programming Code` = character()))
+    writexl::write_xlsx(mapping_tb, paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/', 'documents/Mapping Datasets.xlsx'))
+  }
 
   convert_r_to_txt(paste0(here::here('03_Algorithm'), '/', x@name), paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/programs'))
   convert_r_to_txt(paste0(here::here('03_Algorithm'), '/', x@name, '/backbones'), paste0(zipfolder, '/', report_name, ' - ', format(Sys.time(), "%Y-%m-%d"), '/datasets/programs'))

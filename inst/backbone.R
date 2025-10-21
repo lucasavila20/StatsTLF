@@ -7,9 +7,9 @@
 #' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #'
 #' Parameters:
-#'   - dataset: A tibble.
-#'   - ...: Any other additional argument to be used (Description below).
-#'      - :
+#'   -
+#'   -
+#'   -
 #'
 #' Output:
 #'   - A flextable object containing the summary table.
@@ -25,7 +25,7 @@
 #'
 #' @return flextable object
 #'
-backbone <- StatsTLF::create_content_backbone(title = '', type = '', fun = function(dataset, ...) {
+backbone <- StatsTLF::create_content_backbone(title = '', type = '', fun = function(...) {
 
  # Step 01: Set up default parameter values ------------------------------------
 
@@ -40,7 +40,7 @@ backbone <- StatsTLF::create_content_backbone(title = '', type = '', fun = funct
 
  # Step 03: Input validation (bullet proof) ------------------------------------
 
- stopifnot(StatsTLF::validate_adam_dataset(dataset))
+ # stopifnot(StatsTLF::validate_adam_dataset(dataset))
 
  # Step 04: Extract relevant variables -----------------------------------------
 

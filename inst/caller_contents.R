@@ -2,7 +2,7 @@ caller_contents <- function(package) {
   ## Use this to debug contents and get backbones names
   backbones <- source_backbones()
 
-  ## Write your input contents here. Add `@content` after the `create_content()` to get the results.
+  ## Write your input contents here.
 
 
   contents <- list(

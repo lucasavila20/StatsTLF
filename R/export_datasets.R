@@ -3,6 +3,7 @@
 #' This function exports a dataset package to a specified file format.
 #'
 #' @param package An object of class `ContentPackage`.
+#' @param spec A character string with path to the spec file.
 #'
 #' @return The path to the exported package.
 #' @export
@@ -27,7 +28,7 @@
 #' ) |>
 #' export_package('teste')
 #' }
-export_datasets <- function(package) {
+export_datasets <- function(package, spec) {
 
   # Validation Step -------------------------------------------------------------
   stopifnot("Package must contain at least one content to be exported." = length(package@content_list) > 0)
@@ -35,6 +36,14 @@ export_datasets <- function(package) {
   stopifnot(
     "Folder './04_Datasets' doesn't exist." = dir.exists(here::here('04_Datasets'))
   )
+
+  stopifnot(
+    "`spec` must be provided." = !is.na(spec),
+    "`spec` must be a character." = is.character(spec),
+    "`spec` cannot be an array." = length(spec) == 1
+  )
+
+  stopifnot("Spec not found." = file.exists(spec) | spec == '')
 
   types <- sapply(package@content_list, function(y) y@type)
   stopifnot('All contents must have `type` "L".' = all(types == "L"))
@@ -50,5 +59,5 @@ export_datasets <- function(package) {
   stopifnot('Content `export_name` must be unique.' = !any(duplicated(export_names)))
   # -----------------------------------------------------------------------------
 
-  return(export_datasets_method(x = package))
+  return(export_datasets_method(x = package, spec = spec))
 }

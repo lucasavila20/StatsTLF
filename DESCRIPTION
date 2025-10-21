@@ -1,7 +1,7 @@
 Package: StatsTLF
 Type: Package
 Title: Statistics Tables, Listings and Figures
-Version: 3.6.0
+Version: 3.7.0
 Author: Pedro Henrique Theotonio de Mesquita Pacheco
 Maintainer: Pedro Henrique Theotonio de Mesquita Pacheco <pedrohmp36@gmail.com>
 Description: The StatsTLF is an R package that helps automatically create tables, listings and figures for statistical reports.
@@ -13,6 +13,7 @@ RoxygenNote: 7.3.2
 Imports: 
     car,
     cli,
+    codetools,
     digest,
     dplyr,
     flextable,
@@ -23,9 +24,11 @@ Imports:
     logrx,
     magick,
     methods,
+    NCmisc,
     officer,
     purrr,
     readr,
+    readxl,
     rlang,
     statebins,
     stats,
@@ -34,6 +37,7 @@ Imports:
     tcltk,
     tibble,
     tools,
+    writexl,
     xml2,
     xslt,
     zip

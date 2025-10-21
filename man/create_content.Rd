@@ -6,7 +6,6 @@
 \usage{
 create_content(
   content_backbone,
-  dataset,
   subtitle = NA_character_,
   population = NA_character_,
   section = NA_character_,
@@ -17,8 +16,6 @@ create_content(
 }
 \arguments{
 \item{content_backbone}{An object of class `ContentBackbone`.}
-
-\item{dataset}{A tibble dataset to which the content backbone will be applied.}
 
 \item{subtitle}{A character string specifying the content subtitle (optional).}
 
