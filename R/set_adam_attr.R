@@ -15,29 +15,34 @@
 #' # Set ADaM attributes for a dataset using metadata from 'ADSL.xlsx'
 #' x <- set_adam_attr(dataset, 'ADSL.xlsx', 'ADSL')
 #' }
-set_adam_attr <- function(dataset, path, name) {
+set_adam_attr_new = function (dataset, path, name) 
+{
   template <- create_adam_datasets(path)
+  match_idx <- which(purrr::map_chr(template, ~attr(.x, "name")) == 
+                       name)
 
-  match_idx <- which(purrr::map_chr(template, ~ attr(.x, "name")) == name)
-  stopifnot('Dataset name not found in metadata.' = length(match_idx) == 1)
+  stopifnot(`Dataset name not found in metadata.` = length(match_idx) == 
+              1)
   template <- template[[match_idx]]
-
   cols_dataset <- names(dataset)
   cols_template <- names(template)
-
   common_cols <- intersect(cols_template, cols_dataset)
-
   for (col in common_cols) {
+    if (is.factor(template[[col]])) {
+      dataset[[col]] <- factor(dataset[[col]], levels = levels(template[[col]]))
+    }
+    
+
     attrs <- attributes(template[[col]])
     for (att_name in names(attrs)) {
-      attr(dataset[[col]], att_name) <- attrs[[att_name]]
+      if (!(att_name %in% c("levels", "class"))) { 
+        attr(dataset[[col]], att_name) <- attrs[[att_name]]
+      }
     }
+      
+    
+    
+    
   }
-
-  attrs <- attributes(template)
-  for (att_name in names(attrs)) {
-    if (att_name != 'row.names') attr(dataset, att_name) <- attrs[[att_name]]
-  }
-
   return(dataset)
 }
