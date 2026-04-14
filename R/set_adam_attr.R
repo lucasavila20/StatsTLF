@@ -15,7 +15,7 @@
 #' # Set ADaM attributes for a dataset using metadata from 'ADSL.xlsx'
 #' x <- set_adam_attr(dataset, 'ADSL.xlsx', 'ADSL')
 #' }
-set_adam_attr_new = function (dataset, path, name) 
+set_adam_attr = function (dataset, path, name) 
 {
   template <- create_adam_datasets(path)
   match_idx <- which(purrr::map_chr(template, ~attr(.x, "name")) == 
